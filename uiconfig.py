@@ -76,7 +76,8 @@ class ConfigApp:
             
         # 运行bat文件并传入参数
         try:
-            subprocess.run(['get_html.bat', semester, week], shell=True)
+            subprocess.run(['get_html.sh', semester, week], shell=True)
+            ##subprocess.run(['get_html.bat', semester, week], shell=True)
             subprocess.run(['parse_table.py', f'response{semester}-{week}.html',semester, week], shell=True)
             ##subprocess.run(['parse_table.exe', f'response{semester}-{week}.html',semester, week], shell=True)
             subprocess.run(['excel_processor2.py'], shell=True)
