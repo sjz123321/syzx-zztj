@@ -90,6 +90,11 @@ class ExcelProcessor(QMainWindow):
         self.show_data_btn.clicked.connect(self.show_all_data)  # 修改这里的方法名
         self.show_data_btn.setMinimumHeight(40)
         
+        self.delete_responsible_btn = QPushButton('删除责任人', self)
+        self.delete_responsible_btn.clicked.connect(self.delete_responsible)
+        self.delete_responsible_btn.setMinimumHeight(40)
+        self.left_layout.addWidget(self.delete_responsible_btn)
+        
         self.add_responsible_btn = QPushButton('添加责任人', self)
         self.add_responsible_btn.clicked.connect(self.add_responsible)  # 修改这里的方法名
         self.add_responsible_btn.setMinimumHeight(40)
@@ -105,6 +110,12 @@ class ExcelProcessor(QMainWindow):
         self.person_stats_btn = QPushButton('统计个人扣分', self)
         self.person_stats_btn.clicked.connect(self.calculate_person_stats)
         self.person_stats_btn.setMinimumHeight(40)
+        
+        # 添加导出Excel按钮
+        self.export_btn = QPushButton('导出到Excel', self)
+        self.export_btn.clicked.connect(self.export_to_excel)
+        self.export_btn.setMinimumHeight(40)
+        self.left_layout.addWidget(self.export_btn)
         
         # 创建日志区域
         self.log_label = QLabel('处理日志:', self)
@@ -122,6 +133,7 @@ class ExcelProcessor(QMainWindow):
         self.left_layout.addWidget(self.filter_btn)
         self.left_layout.addWidget(self.filter_unassigned_btn)
         self.left_layout.addWidget(self.person_stats_btn)
+        
         
         # 创建右侧数据显示区域
         right_panel = QWidget()
@@ -212,7 +224,7 @@ class ExcelProcessor(QMainWindow):
             records = self.cursor.fetchall()
             
             # 准备表头
-            header = "ID\t周次\t日期\t\t班级\t楼层\t寝室\t类别\t扣分\t说明\t责任人(扣分)\n"
+            header = "ID\t周次\t日期\t班级\t楼层\t寝室\t类别\t扣分\t说明\t责任人(扣分)\n"
             header += "-" * 120 + "\n"
             self.data_text.insertPlainText(header)
             
@@ -368,7 +380,7 @@ class ExcelProcessor(QMainWindow):
             self.data_text.insertPlainText(title)
             
             # 显示表头
-            header = "ID\t周次\t日期\t\t班级\t楼层\t寝室\t类别\t扣分\t说明\t责任人(扣分)\n"
+            header = "ID\t周次\t日期\t班级\t楼层\t寝室\t类别\t扣分\t说明\t责任人(扣分)\n"
             header += "-" * 120 + "\n"
             self.data_text.insertPlainText(header)
             
@@ -594,6 +606,108 @@ class ExcelProcessor(QMainWindow):
             
         except Exception as e:
             self.log_message(f"程序执行错误: {str(e)}")
+            
+    def delete_responsible(self):
+        try:
+            # 获取记录 ID
+            record_id, ok = QInputDialog.getText(self, '输入记录ID', 
+                '请输入要删除责任人的记录ID:')
+            if not ok:
+                return
+                
+            record_id = int(record_id)
+            
+            # 检查记录是否存在
+            self.cursor.execute('''
+                SELECT COUNT(*) FROM DormitoryRecords WHERE id = ?
+            ''', (record_id,))
+            
+            if self.cursor.fetchone()[0] == 0:
+                self.log_message(f"记录ID {record_id} 不存在")
+                return
+            
+            # 获取该记录的所有责任人
+            self.cursor.execute('''
+                SELECT id, name, deduct_points 
+                FROM ResponsiblePersons 
+                WHERE record_id = ?
+            ''', (record_id,))
+            
+            responsible_persons = self.cursor.fetchall()
+            
+            if not responsible_persons:
+                self.log_message(f"记录ID {record_id} 没有关联的责任人")
+                return
+                
+            # 显示责任人列表供用户选择
+            responsible_list = [f"{person[0]}: {person[1]} ({person[2]}分)" for person in responsible_persons]
+            responsible_id, ok = QInputDialog.getItem(self, '选择要删除的责任人', 
+                '请选择要删除的责任人:', responsible_list, 0, False)
+                
+            if ok and responsible_id:
+                # 从字符串中提取责任人ID
+                responsible_id = int(responsible_id.split(':')[0])
+                
+                # 删除选中的责任人
+                self.cursor.execute('''
+                    DELETE FROM ResponsiblePersons 
+                    WHERE id = ?
+                ''', (responsible_id,))
+                
+                self.conn.commit()
+                self.log_message(f"已删除责任人ID: {responsible_id}")
+                
+                # 刷新显示
+                self.show_all_data()
+                
+        except Exception as e:
+            self.log_message(f"删除责任人时出错: {str(e)}")  
+
+    def export_to_excel(self):
+        try:
+            # 获取当前时间作为文件名的一部分
+            current_time = datetime.now().strftime('%Y%m%d_%H%M%S')
+            filename = f'export-{current_time}.xlsx'
+            
+            # 获取当前显示的数据
+            data = self.data_text.toPlainText().strip().split('\n')
+            
+            # 解析数据并创建DataFrame
+            headers = []
+            rows = []
+            
+            for i, line in enumerate(data):
+                if i == 0:  # 标题行，跳过
+                    continue
+                if i == 1:  # 分隔线，跳过
+                    continue
+                if i == 2:  # 表头行
+                    headers = line.split('\t')
+                    continue
+                if i == 3:  # 分隔线，跳过
+                    continue
+                if line.startswith('-'):  # 跳过分隔线
+                    continue
+                    
+                # 处理数据行
+                if line:
+                    rows.append(line.split('\t'))
+            
+            # 创建DataFrame
+            df = pd.DataFrame(rows, columns=headers)
+            
+            # 导出到Excel
+            df.to_excel(filename, index=False)
+            self.log_message(f"数据已导出到文件: {filename}")
+            
+            # 显示成功消息
+            QMessageBox.information(self, '导出成功', 
+                f'数据已成功导出到文件:\n{filename}')
+                
+        except Exception as e:
+            self.log_message(f"导出到Excel时出错: {str(e)}")
+            QMessageBox.critical(self, '导出错误', 
+                f'导出数据时发生错误:\n{str(e)}')            
 
     def closeEvent(self, event):
         try:
