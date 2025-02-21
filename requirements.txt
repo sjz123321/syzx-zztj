@@ -5,11 +5,4 @@ PyQt5>=5.15.0
 pandas>=1.3.0
 openpyxl>=3.0.0  # Required for Excel operations with pandas
 
-# Database
-sqlite3  # Part of Python standard library, no need to install separately
-
-# System and DateTime
-os  # Part of Python standard library
-sys  # Part of Python standard library
-datetime  # Part of Python standard library
-json  # Part of Python standard library
+beautifulsoup4
