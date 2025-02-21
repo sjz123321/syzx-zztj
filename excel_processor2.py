@@ -1,6 +1,7 @@
 import sys
 import os
 import pandas as pd
+import json
 import sqlite3
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QPushButton, 
                            QVBoxLayout, QHBoxLayout, QWidget, QLabel, 
@@ -10,10 +11,110 @@ from PyQt5.QtCore import Qt
 from datetime import datetime
 from PyQt5.QtWidgets import QComboBox, QMessageBox
 
+class ResponsibleDialogUI(QDialog):
+    def __init__(self, parent=None, last_record_id=1):
+        super().__init__(parent)
+        self.parent = parent
+        self.last_record_id = last_record_id
+        self.initUI()
+        
+    def initUI(self):
+        self.setWindowTitle('添加责任人')
+        self.setMinimumWidth(300)
+        layout = QFormLayout(self)
+        
+        # 创建记录ID选择下拉框（可编辑）
+        self.record_id_combo = QComboBox(self)
+        self.record_id_combo.setEditable(True)
+        self.populate_record_ids()
+        # 设置上次使用的ID
+        index = self.record_id_combo.findText(str(self.last_record_id))
+        if index >= 0:
+            self.record_id_combo.setCurrentIndex(index)
+        self.record_id_combo.currentTextChanged.connect(self.on_record_id_changed)
+        
+        # 创建责任人下拉框
+        self.responsible_combo = QComboBox(self)
+        
+        # 创建扣分输入框
+        self.points_input = QLineEdit(self)
+        
+        # 添加到布局
+        layout.addRow('记录ID:', self.record_id_combo)
+        layout.addRow('责任人:', self.responsible_combo)
+        layout.addRow('扣分:', self.points_input)
+        
+        # 添加按钮
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.Ok | QDialogButtonBox.Cancel,
+            Qt.Horizontal, self)
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addRow(buttons)
+        
+        # 初始化检查当前ID的寝室信息
+        self.on_record_id_changed(str(self.last_record_id))
+    
+    def populate_record_ids(self):
+        """填充记录ID下拉框"""
+        try:
+            # 获取所有记录ID
+            self.parent.cursor.execute('SELECT id, Room FROM DormitoryRecords ORDER BY id')
+            records = self.parent.cursor.fetchall()
+            self.record_id_combo.clear()
+            for record in records:
+                self.record_id_combo.addItem(str(record[0]), record[1])  # 存储ID和寝室号
+        except Exception as e:
+            self.parent.log_message(f"获取记录ID时出错: {str(e)}")
+
+    def on_record_id_changed(self, record_id):
+        """当选择的记录ID改变时检查寝室信息"""
+        try:
+            if not record_id:
+                return
+                
+            # 查询对应记录的寝室号
+            self.parent.cursor.execute('''
+                SELECT Room FROM DormitoryRecords WHERE id = ?
+            ''', (record_id,))
+            result = self.parent.cursor.fetchone()
+            
+            if not result:
+                return
+                
+            room_number = result[0]
+            
+            # 重置责任人下拉框
+            self.responsible_combo.clear()
+            
+            # 检查寝室号是否为纯数字
+            if room_number.isdigit():
+                # 尝试从mingdan.json读取成员信息
+                try:
+                    if os.path.exists('mingdan.json'):
+                        with open('mingdan.json', 'r', encoding='utf-8') as f:
+                            data = json.load(f)
+                            if room_number in data:
+                                # 添加寝室成员到下拉框
+                                members = data[room_number]
+                                self.responsible_combo.addItems(members)
+                    else:
+                        self.parent.log_message("mingdan.json文件不存在")
+                except Exception as e:
+                    self.parent.log_message(f"读取mingdan.json时出错: {str(e)}")
+            
+            # 设置下拉框为可编辑（允许手动输入）
+            self.responsible_combo.setEditable(True)
+            
+        except Exception as e:
+            self.parent.log_message(f"检查寝室信息时出错: {str(e)}")
+
 class ColumnSelectDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.last_record_id = 1  # 添加成员变量存储上次使用的记录ID
         self.initUI()
+        self.setupDatabase()
         
     def initUI(self):
         self.setWindowTitle('选择列')
@@ -63,6 +164,7 @@ class AddResponsibleDialog(QDialog):
 class ExcelProcessor(QMainWindow):
     def __init__(self):
         super().__init__()
+        self.last_record_id = 1  # 添加这一行，初始化 last_record_id
         self.initUI()  # 先初始化UI
         self.setupDatabase()  # 再设置数据库
         
@@ -495,43 +597,36 @@ class ExcelProcessor(QMainWindow):
         
         self.log_message(f"已显示 {len(records)} 条记录")
 
-    def add_responsible(self):  # 改名为 add_responsible
+    def add_responsible(self):
+        """添加责任人的新实现"""
         try:
-            text, ok = QInputDialog.getText(self, '输入记录ID', 
-                '请输入要添加责任人的记录ID:')
-            if ok:
-                record_id = int(text)
+            # 创建新的责任人添加对话框
+            dialog = ResponsibleDialogUI(self, self.last_record_id)
+            if dialog.exec_():
+                record_id = int(dialog.record_id_combo.currentText())
+                name = dialog.responsible_combo.currentText()
+                points = float(dialog.points_input.text())
                 
-                # 检查记录是否存在
+                # 保存这次使用的记录ID
+                self.last_record_id = record_id
+                
+                # 添加责任人记录
                 self.cursor.execute('''
-                    SELECT COUNT(*) FROM DormitoryRecords WHERE id = ?
-                ''', (record_id,))
+                    INSERT INTO ResponsiblePersons 
+                    (record_id, name, deduct_points)
+                    VALUES (?, ?, ?)
+                ''', (record_id, name, points))
                 
-                if self.cursor.fetchone()[0] == 0:
-                    self.log_message(f"记录ID {record_id} 不存在")
-                    return
+                self.conn.commit()
+                self.log_message(f"已为记录 {record_id} 添加责任人: {name}")
                 
-                # 打开添加责任人对话框
-                dialog = AddResponsibleDialog(record_id, self)
-                if dialog.exec_():
-                    name = dialog.name_input.text()
-                    points = float(dialog.points_input.text())
-                    
-                    # 添加责任人记录
-                    self.cursor.execute('''
-                        INSERT INTO ResponsiblePersons 
-                        (record_id, name, deduct_points)
-                        VALUES (?, ?, ?)
-                    ''', (record_id, name, points))
-                    
-                    self.conn.commit()
-                    self.log_message(f"已为记录 {record_id} 添加责任人: {name}")
-                    
-                    # 刷新显示
-                    self.show_all_data()
-                    
+                # 刷新显示
+                self.show_all_data()
+                
         except Exception as e:
             self.log_message(f"添加责任人时出错: {str(e)}")
+            QMessageBox.critical(self, '错误', f'添加责任人时发生错误:\n{str(e)}')
+
             
             
 
