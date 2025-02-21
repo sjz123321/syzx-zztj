@@ -81,41 +81,29 @@ class ExcelProcessor(QMainWindow):
         left_panel = QWidget()
         self.left_layout = QVBoxLayout(left_panel)
         
-        # 创建按钮
+        # 创建上部按钮组
+        upper_buttons = QVBoxLayout()
+        
+        # 日志框上方的四个按钮
         self.process_btn = QPushButton('开始处理Excel文件', self)
-        self.process_btn.clicked.connect(self.process_excel_files)  # 修改这里的方法名
+        self.process_btn.clicked.connect(self.process_excel_files)
         self.process_btn.setMinimumHeight(40)
+        upper_buttons.addWidget(self.process_btn)
         
         self.show_data_btn = QPushButton('显示所有数据', self)
-        self.show_data_btn.clicked.connect(self.show_all_data)  # 修改这里的方法名
+        self.show_data_btn.clicked.connect(self.show_all_data)
         self.show_data_btn.setMinimumHeight(40)
+        upper_buttons.addWidget(self.show_data_btn)
+        
+        self.add_responsible_btn = QPushButton('添加责任人', self)
+        self.add_responsible_btn.clicked.connect(self.add_responsible)
+        self.add_responsible_btn.setMinimumHeight(40)
+        upper_buttons.addWidget(self.add_responsible_btn)
         
         self.delete_responsible_btn = QPushButton('删除责任人', self)
         self.delete_responsible_btn.clicked.connect(self.delete_responsible)
         self.delete_responsible_btn.setMinimumHeight(40)
-        self.left_layout.addWidget(self.delete_responsible_btn)
-        
-        self.add_responsible_btn = QPushButton('添加责任人', self)
-        self.add_responsible_btn.clicked.connect(self.add_responsible)  # 修改这里的方法名
-        self.add_responsible_btn.setMinimumHeight(40)
-        
-        self.filter_btn = QPushButton('筛选', self)
-        self.filter_btn.clicked.connect(self.filter_data)
-        self.filter_btn.setMinimumHeight(40)
-        
-        self.filter_unassigned_btn = QPushButton('筛选未扣分', self)
-        self.filter_unassigned_btn.clicked.connect(self.filter_unassigned)
-        self.filter_unassigned_btn.setMinimumHeight(40)
-        
-        self.person_stats_btn = QPushButton('统计个人扣分', self)
-        self.person_stats_btn.clicked.connect(self.calculate_person_stats)
-        self.person_stats_btn.setMinimumHeight(40)
-        
-        # 添加导出Excel按钮
-        self.export_btn = QPushButton('导出到Excel', self)
-        self.export_btn.clicked.connect(self.export_to_excel)
-        self.export_btn.setMinimumHeight(40)
-        self.left_layout.addWidget(self.export_btn)
+        upper_buttons.addWidget(self.delete_responsible_btn)
         
         # 创建日志区域
         self.log_label = QLabel('处理日志:', self)
@@ -123,17 +111,35 @@ class ExcelProcessor(QMainWindow):
         self.log_text.setReadOnly(True)
         self.log_text.setMaximumHeight(200)
         
-        # 将控件添加到左侧布局
-        self.left_layout.addWidget(self.process_btn)
-        self.left_layout.addWidget(self.show_data_btn)
-        self.left_layout.addWidget(self.add_responsible_btn)
+        # 创建下部按钮组
+        lower_buttons = QVBoxLayout()
+        
+        # 日志框下方的四个按钮
+        self.filter_btn = QPushButton('筛选', self)
+        self.filter_btn.clicked.connect(self.filter_data)
+        self.filter_btn.setMinimumHeight(40)
+        lower_buttons.addWidget(self.filter_btn)
+        
+        self.filter_unassigned_btn = QPushButton('筛选未扣分', self)
+        self.filter_unassigned_btn.clicked.connect(self.filter_unassigned)
+        self.filter_unassigned_btn.setMinimumHeight(40)
+        lower_buttons.addWidget(self.filter_unassigned_btn)
+        
+        self.person_stats_btn = QPushButton('统计个人扣分', self)
+        self.person_stats_btn.clicked.connect(self.calculate_person_stats)
+        self.person_stats_btn.setMinimumHeight(40)
+        lower_buttons.addWidget(self.person_stats_btn)
+        
+        self.export_btn = QPushButton('导出到Excel', self)
+        self.export_btn.clicked.connect(self.export_to_excel)
+        self.export_btn.setMinimumHeight(40)
+        lower_buttons.addWidget(self.export_btn)
+        
+        # 将所有组件添加到左侧布局
+        self.left_layout.addLayout(upper_buttons)
         self.left_layout.addWidget(self.log_label)
         self.left_layout.addWidget(self.log_text)
-        self.left_layout.addStretch()
-        self.left_layout.addWidget(self.filter_btn)
-        self.left_layout.addWidget(self.filter_unassigned_btn)
-        self.left_layout.addWidget(self.person_stats_btn)
-        
+        self.left_layout.addLayout(lower_buttons)
         
         # 创建右侧数据显示区域
         right_panel = QWidget()
@@ -143,7 +149,6 @@ class ExcelProcessor(QMainWindow):
         self.data_text = QTextEdit(self)
         self.data_text.setReadOnly(True)
         
-        # 将控件添加到右侧布局
         right_layout.addWidget(self.data_label)
         right_layout.addWidget(self.data_text)
         
@@ -151,7 +156,7 @@ class ExcelProcessor(QMainWindow):
         splitter = QSplitter(Qt.Horizontal)
         splitter.addWidget(left_panel)
         splitter.addWidget(right_panel)
-        splitter.setSizes([400, 800])
+        splitter.setSizes([40, 1200])
         
         # 将分割器添加到主布局
         main_layout.addWidget(splitter)
@@ -532,7 +537,7 @@ class ExcelProcessor(QMainWindow):
 
     def process_excel_files(self):  # 改名为 process_excel_files
         try:
-            excel_files = [f for f in os.listdir('.') if f.endswith('.xlsx')]
+            excel_files = [f for f in os.listdir('.') if f.endswith('.xlsx') and not f.startswith('export-')]
             self.log_message(f"找到 {len(excel_files)} 个Excel文件")
             
             for excel_file in excel_files:
