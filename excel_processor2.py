@@ -672,32 +672,111 @@ class ExcelProcessor(QMainWindow):
             # 获取当前显示的数据
             data = self.data_text.toPlainText().strip().split('\n')
             
-            # 解析数据并创建DataFrame
-            headers = []
-            rows = []
-            
+            # 查找真正的表头行的索引
+            header_index = -1
             for i, line in enumerate(data):
-                if i == 0:  # 标题行，跳过
-                    continue
-                if i == 1:  # 分隔线，跳过
-                    continue
-                if i == 2:  # 表头行
-                    headers = line.split('\t')
-                    continue
-                if i == 3:  # 分隔线，跳过
-                    continue
-                if line.startswith('-'):  # 跳过分隔线
-                    continue
-                    
-                # 处理数据行
-                if line:
-                    rows.append(line.split('\t'))
+                if '周次' in line and '日期' in line and '班级' in line:
+                    header_index = i
+                    break
             
-            # 创建DataFrame
-            df = pd.DataFrame(rows, columns=headers)
+            if header_index == -1:
+                raise ValueError("未找到有效的表头行")
+    
+            # 获取表头
+            headers = data[header_index].split('\t')
             
-            # 导出到Excel
-            df.to_excel(filename, index=False)
+            # 收集统计信息（表头之前的信息）
+            summary_info = '\n'.join(data[:header_index])
+            
+            # 解析数据行
+            rows = []
+            for line in data[header_index + 1:]:
+                if line.startswith('--'):  # 跳过分隔线
+                    continue
+                # 只处理包含实际数据的行
+                if line and not line.startswith('--') and '\t' in line:
+                    row_data = line.split('\t')
+                    # 确保数据行的列数与表头一致
+                    if len(row_data) > len(headers):
+                        row_data = row_data[:len(headers)]
+                    elif len(row_data) < len(headers):
+                        row_data.extend([''] * (len(headers) - len(row_data)))
+                    rows.append(row_data)
+    
+            # 创建Excel文件
+            from openpyxl import Workbook
+            from openpyxl.styles import Alignment, Border, Side
+            
+            wb = Workbook()
+            ws = wb.active
+            ws.title = '数据导出'
+            
+            # 写入统计信息（表头前的汇总信息）
+            current_row = 1
+            summary_lines = summary_info.split('\n')
+            for line in summary_lines:
+                if line.strip():  # 如果不是空行
+                    ws.cell(row=current_row, column=1, value=line)
+                    # 合并单元格
+                    ws.merge_cells(f'A{current_row}:{chr(65+len(headers)-1)}{current_row}')
+                    # 设置左对齐
+                    ws.cell(row=current_row, column=1).alignment = Alignment(horizontal='left')
+                current_row += 1
+            
+            current_row += 1  # 空出一行
+            
+            # 写入表头
+            for col, header in enumerate(headers, start=1):
+                ws.cell(row=current_row, column=col, value=header)
+            
+            # 写入数据
+            for row_data in rows:
+                current_row += 1
+                for col, value in enumerate(row_data, start=1):
+                    ws.cell(row=current_row, column=col, value=value)
+            
+            # 设置边框和对齐方式
+            thin_border = Border(left=Side(style='thin'), 
+                            right=Side(style='thin'), 
+                            top=Side(style='thin'), 
+                            bottom=Side(style='thin'))
+            
+            # 为数据部分添加边框和居中对齐
+            data_start_row = len(summary_lines) + 2  # 表头行
+            for row in ws.iter_rows(min_row=data_start_row, 
+                                max_row=ws.max_row,
+                                min_col=1, 
+                                max_col=len(headers)):
+                for cell in row:
+                    cell.border = thin_border
+                    cell.alignment = Alignment(horizontal='center', vertical='center')
+            
+            # 调整列宽 - 修复后的版本
+            for col in range(1, len(headers) + 1):
+                max_length = 0
+                column_letter = chr(64 + col)  # A, B, C, ...
+                
+                # 获取该列所有单元格
+                for row in range(data_start_row, ws.max_row + 1):
+                    cell = ws.cell(row=row, column=col)
+                    try:
+                        if cell.value:
+                            max_length = max(max_length, len(str(cell.value)))
+                    except:
+                        pass
+                
+                # 考虑表头长度
+                header_cell = ws.cell(row=data_start_row, column=col)
+                if header_cell.value:
+                    max_length = max(max_length, len(str(header_cell.value)))
+                
+                # 设置列宽
+                adjusted_width = (max_length + 2) * 1.2
+                ws.column_dimensions[column_letter].width = adjusted_width
+            
+            # 保存文件
+            wb.save(filename)
+            
             self.log_message(f"数据已导出到文件: {filename}")
             
             # 显示成功消息
@@ -707,7 +786,7 @@ class ExcelProcessor(QMainWindow):
         except Exception as e:
             self.log_message(f"导出到Excel时出错: {str(e)}")
             QMessageBox.critical(self, '导出错误', 
-                f'导出数据时发生错误:\n{str(e)}')            
+                f'导出数据时发生错误:\n{str(e)}')
 
     def closeEvent(self, event):
         try:
