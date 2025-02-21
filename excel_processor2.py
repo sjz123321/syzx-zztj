@@ -114,7 +114,7 @@ class ColumnSelectDialog(QDialog):
         super().__init__(parent)
         self.last_record_id = 1  # 添加成员变量存储上次使用的记录ID
         self.initUI()
-        self.setupDatabase()
+        ##self.setupDatabase()
         
     def initUI(self):
         self.setWindowTitle('选择列')
